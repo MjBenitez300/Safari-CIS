@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>View My Records</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<h1 id="pageTitle">View My Records</h1>
+
+<button id="backBtn">Back to Dashboard</button>
+<button id="printBtn">Print</button>
+<button id="exportBtn">Export to Excel</button>
+<button id="downloadStatsBtn">Download Stats CSV</button>
+<button id="deleteAllBtn" style="color: red;">Delete All Records</button>
+
+<table id="recordsTable" border="1" style="margin-top: 20px; width: 100%; border-collapse: collapse;">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Age</th>
+      <th>Sex</th>
+      <th>Address</th>
+      <th>Walk-in Date</th>
+      <th>Chief Complaint</th>
+      <th>Medication</th>
+    </tr>
+  </thead>
+  <tbody id="tableBody"></tbody>
+</table>
+
+<!-- ✅ Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+
+<!-- ✅ Your Firebase config -->
+<script src="firebase.js"></script>
+
+<!-- ✅ Your viewRecords logic -->
+<script src="viewRecords.js"></script>
+</body>
+</html>

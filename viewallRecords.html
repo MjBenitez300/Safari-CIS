@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>View Patient Records</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; text-align: center; background: #f9f9f9; }
+    h1 { margin-bottom: 20px; color: #333; }
+    #navButtons, #actionButtons { margin-bottom: 20px; position: relative; z-index: 2; }
+    #navButtons button, #actionButtons button {
+      margin: 5px; padding: 10px 18px; font-size: 16px; border: none;
+      border-radius: 5px; cursor: pointer; color: white; transition: background-color 0.3s;
+    }
+    #navButtons button { background-color: #007bff; }
+    #navButtons button:hover { background-color: #0056b3; }
+    #actionButtons button { background-color: #28a745; }
+    #actionButtons button:hover { background-color: #1e7e34; }
+    #deleteAllBtn { background-color: #dc3545; }
+    #deleteAllBtn:hover { background-color: #a71d2a; }
+    #viewHistoryBtn { background-color: #17a2b8; }
+    #viewHistoryBtn:hover { background-color: #117a8b; }
+    #recordsTable { width: 100%; border-collapse: collapse; background: white; margin-top: 20px; box-shadow: 0 0 8px rgba(0,0,0,0.1); position: relative; z-index: 1; }
+    th, td { padding: 12px 15px; border: 1px solid #ddd; text-align: left; font-size: 14px; }
+    th { background-color: #007bff; color: white; }
+
+    /* History Search Section */
+    #historySearchSection {
+      margin-top: 30px;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      max-width: 700px;
+      margin-left: auto;
+      margin-right: auto;
+      text-align: left;
+      display: none;
+      position: relative;
+      z-index: 3;
+    }
+    #historySearchSection input[type="text"] {
+      width: 70%;
+      padding: 8px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    #historySearchSection button {
+      padding: 9px 18px;
+      font-size: 16px;
+      margin-top: 10px;
+      margin-right: 10px;
+      border: none;
+      border-radius: 5px;
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    #historySearchBtn { background-color: #007bff; }
+    #historySearchBtn:hover { background-color: #0056b3; }
+    #printAllHistoryBtn { background-color: #28a745; }
+    #printAllHistoryBtn:hover { background-color: #1e7e34; }
+    #closeHistoryBtn { background-color: #dc3545; }
+    #closeHistoryBtn:hover { background-color: #a71d2a; }
+
+    #historyResults { margin-top: 20px; }
+    #historyResults table { width: 100%; border-collapse: collapse; }
+    #historyResults th { background-color: #17a2b8; color: white; }
+
+    /* Autocomplete box styling */
+    #suggestions {
+      position: absolute;
+      background: white;
+      border: 1px solid #ccc;
+      width: 70%;
+      max-height: 150px;
+      overflow-y: auto;
+      border-radius: 5px;
+      display: none;
+      z-index: 999;
+    }
+    #suggestions div {
+      padding: 8px;
+      cursor: pointer;
+    }
+    #suggestions div:hover {
+      background-color: #f0f0f0;
+    }
+  </style>
+</head>
+<body>
+
+<h1>View Patient Records</h1>
+
+<div id="navButtons">
+  <button id="viewAllBtn">View All Records</button>
+  <button id="viewGuestBtn">View Guest Records</button>
+  <button id="viewEmployeeBtn">View Employee Records</button>
+  <button id="viewMyRecordsBtn" style="background-color:#6c63ff;">View My Records (By Month)</button>
+</div>
+
+<div id="actionButtons">
+  <button id="printBtn">Print</button>
+  <button id="exportBtn">Export to Excel</button>
+  <button id="backBtn">Back to Dashboard</button>
+  <button id="downloadBackupBtn" style="background-color:#46383f;">Download Backup</button>
+  <button id="uploadBackupBtn" style="background-color:#46383f;">Upload Backup</button>
+  <input type="file" id="backupFileInput" style="display:none" />
+  <button id="viewHistoryBtn" style="background-color:#e212a4;" >View History</button>
+  <button id="deleteAllBtn" style="background-color:#e21212;" >Delete All Displayed Records</button>
+  <button id="recycleBinBtn" style="background-color:#e21212;">Recycle Bin</button>
+</div>
+
+<table id="recordsTable"></table>
+
+<!-- History Search -->
+<div id="historySearchSection">
+  <label for="historySearchInput"><strong>Search Patient Name:</strong></label><br />
+  <input type="text" id="historySearchInput" placeholder="Enter patient name..." />
+  <div id="suggestions"></div>
+  <button id="historySearchBtn">Search</button>
+  <button id="printAllHistoryBtn">Print All</button>
+  <button id="closeHistoryBtn">Close</button>
+  <div id="historyResults"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+import { getFirestore, collection, getDocs, deleteDoc, addDoc, doc, query, where, updateDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyD_rjgegrGF5cjcW0JQgip0rLGntDl9k9Q",
+  authDomain: "safari-cis.firebaseapp.com",
+  projectId: "safari-cis",
+  storageBucket: "safari-cis.firebasestorage.app",
+  messagingSenderId: "926885582043",
+  appId: "1:926885582043:web:b197acf3c55389f876e8fe"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const recordsTable = document.getElementById("recordsTable");
+const viewAllBtn = document.getElementById("viewAllBtn");
+const viewGuestBtn = document.getElementById("viewGuestBtn");
+const viewEmployeeBtn = document.getElementById("viewEmployeeBtn");
+const viewMyRecordsBtn = document.getElementById("viewMyRecordsBtn");
+const deleteAllBtn = document.getElementById("deleteAllBtn");
+const viewHistoryBtn = document.getElementById("viewHistoryBtn");
+const historySection = document.getElementById("historySearchSection");
+const closeHistoryBtn = document.getElementById("closeHistoryBtn");
+const historySearchBtn = document.getElementById("historySearchBtn");
+const historyInput = document.getElementById("historySearchInput");
+const historyResults = document.getElementById("historyResults");
+const recycleBinBtn = document.getElementById("recycleBinBtn");
+const suggestionsBox = document.getElementById("suggestions");
+const downloadBackupBtn = document.getElementById("downloadBackupBtn");
+const uploadBackupBtn = document.getElementById("uploadBackupBtn");
+const backupFileInput = document.getElementById("backupFileInput");
+
+let currentFilter = null;
+let showDeleted = false;
+let cachedPatients = [];
+const loggedInUser = JSON.parse(localStorage.getItem("loggedInUser"));
+
+const commonFields = [
+  { id: "patientNumber", label: "Patient Number" },
+  { id: "patientName", label: "Patient Name" },
+  { id: "patientAge", label: "Age" },
+  { id: "sex", label: "Sex" },
+  { id: "patientAddress", label: "Address" },
+  { id: "walkInDate", label: "Walk-in Date" },
+  { id: "chiefComplaint", label: "Chief Complaint" },
+  { id: "history", label: "History" },
+  { id: "medication", label: "Medication" }
+];
+
+const employeeExtraFields = [
+  { id: "civilStatus", label: "Civil Status" },
+  { id: "department", label: "Department" }
+];
+
+function renderTableHeader() {
+  recordsTable.innerHTML = "";
+  const header = recordsTable.createTHead().insertRow();
+  let fields = [...commonFields];
+  if (currentFilter === "employee") fields = fields.concat(employeeExtraFields);
+  fields.forEach(f => {
+    const th = document.createElement("th");
+    th.textContent = f.label;
+    header.appendChild(th);
+  });
+  const actionTh = document.createElement("th");
+  actionTh.textContent = "Action";
+  header.appendChild(actionTh);
+}
+
+async function loadPatients() {
+  let q;
+  const baseCollection = collection(db, "patients");
+  if (currentFilter === "guest") q = query(baseCollection, where("type", "==", "guest"));
+  else if (currentFilter === "employee") q = query(baseCollection, where("type", "==", "employee"));
+  else if (currentFilter === "myrecords") q = collection(db, "patients"); // load all and filter after
+  else q = baseCollection;
+
+  const querySnapshot = await getDocs(q);
+  const patients = [];
+  querySnapshot.forEach(docSnap => {
+    const data = docSnap.data();
+    if ((showDeleted && data.isDeleted) || (!showDeleted && !data.isDeleted)) {
+      if (currentFilter === "myrecords") {
+        if (data.addedBy === loggedInUser.username) patients.push({ id: docSnap.id, ...data });
+      } else {
+        patients.push({ id: docSnap.id, ...data });
+      }
+    }
+  });
+  renderRecords(patients);
+  cachedPatients = patients;
+}
+
+function renderRecords(patients) {
+  renderTableHeader();
+  const tbody = recordsTable.createTBody();
+  let fields = [...commonFields];
+  if (currentFilter === "employee") fields = fields.concat(employeeExtraFields);
+
+  if (patients.length === 0) {
+    const row = tbody.insertRow();
+    const cell = row.insertCell();
+    cell.colSpan = fields.length + 1;
+    cell.textContent = "No records found.";
+    return;
+  }
+
+  patients.forEach(p => {
+    const row = tbody.insertRow();
+    fields.forEach(f => {
+      const cell = row.insertCell();
+      let val = p[f.id];
+      if (f.id === "medication" && Array.isArray(val)) val = val.join(", ");
+      cell.textContent = val || "—";
+    });
+
+    const actionCell = row.insertCell();
+    if (!showDeleted) {
+      const delBtn = document.createElement("button");
+      delBtn.textContent = "Delete";
+      delBtn.style.backgroundColor = "#dc3545";
+      delBtn.style.color = "white";
+      delBtn.onclick = async () => {
+        if (confirm(`Delete record for ${p.patientName}?`)) {
+          await updateDoc(doc(db, "patients", p.id), { isDeleted: true });
+          alert("Moved to Recycle Bin!");
+          loadPatients();
+        }
+      };
+      actionCell.appendChild(delBtn);
+    } else {
+      const restoreBtn = document.createElement("button");
+      restoreBtn.textContent = "Restore";
+      restoreBtn.style.backgroundColor = "#28a745";
+      restoreBtn.style.color = "white";
+      restoreBtn.onclick = async () => {
+        await updateDoc(doc(db, "patients", p.id), { isDeleted: false });
+        alert("Record restored!");
+        loadPatients();
+      };
+      const permDelBtn = document.createElement("button");
+      permDelBtn.textContent = "Delete Permanently";
+      permDelBtn.style.backgroundColor = "#dc3545";
+      permDelBtn.style.color = "white";
+      permDelBtn.onclick = async () => {
+        if (confirm("Permanently delete this record?")) {
+          await deleteDoc(doc(db, "patients", p.id));
+          alert("Record deleted permanently!");
+          loadPatients();
+        }
+      };
+      actionCell.appendChild(restoreBtn);
+      actionCell.appendChild(permDelBtn);
+    }
+  });
+}
+
+// Event Listeners
+viewAllBtn.onclick = () => { currentFilter = null; showDeleted = false; loadPatients(); };
+viewGuestBtn.onclick = () => { currentFilter = "guest"; showDeleted = false; loadPatients(); };
+viewEmployeeBtn.onclick = () => { currentFilter = "employee"; showDeleted = false; loadPatients(); };
+
+// View My Records by Month
+viewMyRecordsBtn.onclick = async () => {
+  let monthName = prompt("Enter the month name:").trim().toLowerCase();
+  if (!monthName) return;
+
+  const monthMap = {
+    january: "01",
+    february: "02",
+    march: "03",
+    april: "04",
+    may: "05",
+    june: "06",
+    july: "07",
+    august: "08",
+    september: "09",
+    october: "10",
+    november: "11",
+    december: "12"
+  };
+
+  const monthNum = monthMap[monthName];
+  if (!monthNum) return alert("Invalid month name. Please try again.");
+
+  currentFilter = null; // Show all types
+  showDeleted = false;
+
+  const baseCollection = collection(db, "patients");
+  const querySnapshot = await getDocs(baseCollection);
+  const filteredPatients = [];
+
+  querySnapshot.forEach(docSnap => {
+    const data = docSnap.data();
+    if (!data.isDeleted && data.walkInDate) {
+      const walkInMonth = data.walkInDate.split("-")[1]; // "YYYY-MM-DD"
+      if (walkInMonth === monthNum) {
+        filteredPatients.push({ id: docSnap.id, ...data });
+      }
+    }
+  });
+
+  renderRecords(filteredPatients);
+};
+
+// Recycle Bin
+recycleBinBtn.onclick = () => { showDeleted = true; loadPatients(); };
+
+// History search & autocomplete
+async function preloadPatients() {
+  if (cachedPatients.length === 0) {
+    const snapshot = await getDocs(collection(db, "patients"));
+    cachedPatients = snapshot.docs.map(d => d.data());
+  }
+}
+
+historyInput.addEventListener("input", async () => {
+  const term = historyInput.value.trim().toLowerCase();
+  suggestionsBox.innerHTML = "";
+  if (term === "") { suggestionsBox.style.display = "none"; return; }
+
+  await preloadPatients();
+  const matches = cachedPatients.filter(p =>
+    p.patientName && p.patientName.toLowerCase().includes(term) && !p.isDeleted
+  ).slice(0, 8);
+
+  if (matches.length === 0) { suggestionsBox.style.display = "none"; return; }
+
+  matches.forEach(p => {
+    const div = document.createElement("div");
+    div.textContent = p.patientName;
+    div.addEventListener("click", () => {
+      historyInput.value = p.patientName;
+      suggestionsBox.style.display = "none";
+      historySearchBtn.click();
+    });
+    suggestionsBox.appendChild(div);
+  });
+  suggestionsBox.style.display = "block";
+});
+
+historySearchBtn.onclick = async () => {
+  const name = historyInput.value.trim();
+  if (name === "") return alert("Please enter a patient name.");
+  const q = query(collection(db, "patients"), where("patientName", "==", name));
+  const querySnapshot = await getDocs(q);
+
+  let html = "<table><tr>";
+  commonFields.forEach(f => html += `<th>${f.label}</th>`);
+  html += "</tr>";
+
+  if (querySnapshot.empty) {
+    html += `<tr><td colspan="${commonFields.length}">No records found.</td></tr>`;
+  } else {
+    querySnapshot.forEach(docSnap => {
+      const data = docSnap.data();
+      if (!data.isDeleted) {
+        html += "<tr>";
+        commonFields.forEach(f => {
+          let val = data[f.id];
+          if (f.id === "medication" && Array.isArray(val)) val = val.join(", ");
+          html += `<td>${val || "—"}</td>`;
+        });
+        html += "</tr>";
+      }
+    });
+  }
+  html += "</table>";
+  historyResults.innerHTML = html;
+};
+
+document.getElementById("printAllHistoryBtn").onclick = () => window.print();
+viewHistoryBtn.onclick = () => historySection.style.display = "block";
+closeHistoryBtn.onclick = () => historySection.style.display = "none";
+document.getElementById("printBtn").onclick = () => window.print();
+
+// Export to CSV
+document.getElementById("exportBtn").onclick = () => {
+  const table = document.getElementById("recordsTable");
+  const rows = table.querySelectorAll("tr");
+  let csvContent = "";
+  rows.forEach(row => {
+    const cols = row.querySelectorAll("th, td");
+    const rowData = Array.from(cols).map(col => `"${col.innerText}"`).join(",");
+    csvContent += rowData + "\n";
+  });
+  const blob = new Blob([csvContent], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "patient_records.csv";
+  a.click();
+};
+
+document.getElementById("backBtn").onclick = () => window.location.href = "dashboard.html";
+
+// Delete All Displayed
+deleteAllBtn.onclick = async () => {
+  if (!confirm("Delete all displayed records?")) return;
+  for (const p of cachedPatients) {
+    await updateDoc(doc(db, "patients", p.id), { isDeleted: true });
+  }
+  alert("All displayed records moved to Recycle Bin!");
+  loadPatients();
+};
+
+// Download Backup
+downloadBackupBtn.onclick = async () => {
+  const snapshot = await getDocs(collection(db, "patients"));
+  const allData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+  const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "backup.json";
+  a.click();
+};
+
+// Upload Backup
+uploadBackupBtn.onclick = () => backupFileInput.click();
+backupFileInput.onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const text = await file.text();
+  let data;
+  try { data = JSON.parse(text); } catch { return alert("Invalid backup file!"); }
+  for (const item of data) {
+    const { id, ...rest } = item;
+    await addDoc(collection(db, "patients"), rest);
+  }
+  alert("Backup uploaded successfully!");
+  loadPatients();
+};
+
+// Load initial data
+loadPatients();
+</script>
+</body>
+</html>
